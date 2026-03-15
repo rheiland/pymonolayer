@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Growing Monolayer ABM</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:        #080c10;
+    --surface:   #0e1520;
+    --border:    #1e2d40;
+    --accent:    #00d4ff;
+    --accent2:   #ff6b35;
+    --muted:     #4a6278;
+    --text:      #c8dae8;
+    --text-dim:  #607080;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px 40px;
+    gap: 20px;
+  }
+
+  header {
+    text-align: center;
+    padding-top: 8px;
+  }
+  header h1 {
+    font-size: clamp(1.1rem, 3vw, 1.6rem);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    text-shadow: 0 0 24px rgba(0,212,255,0.35);
+  }
+  header p {
+    font-size: .78rem;
+    color: var(--text-dim);
+    margin-top: 4px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ── control panel ─────────────────────────────── */
+  #controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+    justify-content: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    width: 100%;
+    max-width: 720px;
+  }
+
+  .ctrl-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 110px;
+  }
+  .ctrl-group label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: .68rem;
+    color: var(--accent);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .ctrl-group input[type=number],
+  .ctrl-group select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: .85rem;
+    padding: 5px 8px;
+    width: 100%;
+    outline: none;
+    transition: border-color .2s;
+  }
+  .ctrl-group input:focus,
+  .ctrl-group select:focus {
+    border-color: var(--accent);
+  }
+
+  #btn-run {
+    align-self: flex-end;
+    background: transparent;
+    border: 1.5px solid var(--accent);
+    border-radius: 6px;
+    color: var(--accent);
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: .8rem;
+    letter-spacing: .1em;
+    padding: 6px 18px;
+    text-transform: uppercase;
+    transition: background .2s, color .2s, box-shadow .2s;
+    min-width: 110px;
+  }
+  #btn-run:hover {
+    background: var(--accent);
+    color: var(--bg);
+    box-shadow: 0 0 18px rgba(0,212,255,.45);
+  }
+  #btn-run:disabled {
+    opacity: .4;
+    cursor: not-allowed;
+  }
+
+  /* ── canvas area ───────────────────────────────── */
+  #canvas-wrap {
+    position: relative;
+    width: min(580px, 96vw);
+    aspect-ratio: 1;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #080c10;
+  }
+
+  /* ── info bar ──────────────────────────────────── */
+  #info-bar {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: .72rem;
+    color: var(--text-dim);
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  #info-bar span { color: var(--text); }
+
+  /* ── playback strip ────────────────────────────── */
+  #playback {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: min(580px, 96vw);
+  }
+
+  #slider-wrap {
+    position: relative;
+  }
+  #frame-slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    outline: none;
+    cursor: pointer;
+  }
+  #frame-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px rgba(0,212,255,.6);
+    cursor: pointer;
+  }
+  #frame-slider::-moz-range-thumb {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+  }
+
+  #btn-row {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+  }
+
+  .pbtn {
+    background: #0e1520;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    cursor: pointer;
+    font-size: .8rem;
+    padding: 6px 14px;
+    transition: border-color .15s, color .15s;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .pbtn:hover { border-color: var(--accent); color: var(--accent); }
+  .pbtn:disabled { opacity: .35; cursor: not-allowed; }
+  #btn-play { min-width: 90px; }
+
+  /* ── progress overlay ──────────────────────────── */
+  #progress-wrap {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(8,12,16,.82);
+    border-radius: 8px;
+    gap: 14px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .3s;
+  }
+  #progress-wrap.visible { opacity: 1; pointer-events: all; }
+  #prog-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: .8rem;
+    color: var(--accent);
+    letter-spacing: .08em;
+  }
+  #prog-bar-outer {
+    width: 220px; height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  #prog-bar-inner {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width .1s;
+    border-radius: 2px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Growing Monolayer</h1>
+  <p>derived from PhysiCell · Adams-Bashforth Integration</p>
+</header>
+
+<!-- Controls -->
+<div id="controls">
+  <div class="ctrl-group">
+    <label>Repulsion</label>
+    <input type="number" id="inp-repulsion" value="10" min="0" step="1" />
+  </div>
+  <div class="ctrl-group">
+    <label>Max Cells</label>
+    <input type="number" id="inp-maxcells" value="500" min="2" step="10" />
+  </div>
+  <div class="ctrl-group">
+    <label>Win Size</label>
+    <input type="number" id="inp-winsize" value="160" min="20" step="10" />
+  </div>
+  <div class="ctrl-group">
+    <label>Split Type</label>
+    <select id="inp-split">
+      <option value="0">0 · PhysiCell</option>
+      <option value="1">1 · Equi-split</option>
+      <option value="2" selected>2 · Equi + overlap</option>
+    </select>
+  </div>
+  <div class="ctrl-group">
+    <label>Seed</label>
+    <input type="number" id="inp-seed" value="42" min="0" step="1" />
+  </div>
+  <div class="ctrl-group">
+    <label>dt_mechanics</label>
+    <input type="number" id="inp-dtmech" value="1.0" min="0.1" step="0.1" />
+  </div>
+  <div class="ctrl-group">
+    <label>Growth rate r</label>
+    <input type="number" id="inp-rgrowth" value="0.011325" min="0" step="0.01" />
+  </div>
+  <div class="ctrl-group">
+    <label>Modulo frame</label>
+    <input type="number" id="inp-modframe" value="10" min="1" step="1" />
+  </div>
+  <div class="ctrl-group">
+    <label>Color Mode</label>
+    <select id="inp-colormode">
+      <option value="white">White outline</option>
+      <option value="gamma">gamma</option>
+      <option value="id">Cell ID</option>
+    </select>
+  </div>
+  <button id="btn-run">▶ Run</button>
+</div>
+
+<!-- Canvas -->
+<div id="canvas-wrap">
+  <canvas id="canvas" width="800" height="800"></canvas>
+  <div id="progress-wrap">
+    <div id="prog-label">Computing…</div>
+    <div id="prog-bar-outer"><div id="prog-bar-inner"></div></div>
+  </div>
+</div>
+
+<!-- Info bar -->
+<div id="info-bar">
+  frame: <span id="lbl-frame">—</span>
+  &nbsp;|&nbsp; agents: <span id="lbl-agents">—</span>
+  &nbsp;|&nbsp; sim-time: <span id="lbl-time">—</span>
+</div>
+
+<!-- Playback -->
+<div id="playback">
+  <input type="range" id="frame-slider" min="0" max="0" value="0" disabled />
+  <div id="btn-row">
+    <button class="pbtn" id="btn-back" disabled>◀◀</button>
+    <button class="pbtn" id="btn-play" disabled>▶ Play</button>
+    <button class="pbtn" id="btn-fwd" disabled>▶▶</button>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   Seeded PRNG  (Mulberry32 — fast, deterministic)
+   ============================================================ */
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+/* Box-Muller using our seeded RNG */
+function makeNormal(rng) {
+  let spare = null;
+  return function (mu, sigma) {
+    if (spare !== null) { const v = spare; spare = null; return mu + sigma * v; }
+    let u, v, s;
+    do {
+      u = rng() * 2 - 1;
+      v = rng() * 2 - 1;
+      s = u * u + v * v;
+    } while (s >= 1 || s === 0);
+    const m = Math.sqrt(-2 * Math.log(s) / s);
+    spare = v * m;
+    return mu + sigma * u * m;
+  };
+}
+
+/* ============================================================
+   Simulation constants (match Python defaults)
+   ============================================================ */
+const INIT_AREA    = 78.54;               // π·5²
+const GROWTH_RATE  = 0.1778;
+const DIV_AREA     = 157.08;             // 2 · INIT_AREA
+
+const A0_GROWTH  = 78.5;
+const R_GROWTH   = 0.002265;
+
+/* ============================================================
+   Agent
+   ============================================================ */
+class Agent {
+  constructor({ x=0, y=0, area=INIT_AREA, growthRate=GROWTH_RATE,
+                divisionArea=DIV_AREA, normRand=2.0, id=0, timeInCycle=0 } = {}) {
+    this.x = x; this.y = y;
+    this.velX = 0; this.velY = 0;
+    this.prevVelX = 0; this.prevVelY = 0;
+    this.area = area;
+    this.growthRate = growthRate;
+    this.divisionArea = divisionArea;
+    this.normRand = normRand;
+    this.id = id;
+    this.timeInCycle = timeInCycle;
+    this.gamma = 1.0;   // free surface fraction (1 = fully exposed)
+  }
+
+  clone() {
+    const a = new Agent();
+    Object.assign(a, this);
+    return a;
+  }
+
+  grow(dt, r) {
+    this.timeInCycle += dt;
+    this.area = A0_GROWTH + r * this.timeInCycle;
+  }
+
+  shouldDivide() { return this.area >= this.divisionArea; }
+
+  divide(maxID, rng, normalRng, splitType) {
+    const daughterArea   = this.area / 2;
+    const daughterRadius = Math.sqrt(daughterArea / Math.PI);
+    const theta  = rng() * 2 * Math.PI;
+    let xvec = Math.cos(theta) * daughterRadius * 2;
+    let yvec = Math.sin(theta) * daughterRadius * 2;
+
+    let nr1, nr2;
+    do { nr1 = normalRng(2.0, 0.4); } while (nr1 < 0);
+    do { nr2 = normalRng(2.0, 0.4); } while (nr2 < 0);
+
+    const newID = maxID[0]++;
+
+    let x1, y1, x2, y2;
+    if (splitType === 0) {
+      x1 = this.x;           y1 = this.y;
+      x2 = this.x + xvec;   y2 = this.y + yvec;
+    } else if (splitType === 1) {
+      xvec /= 2; yvec /= 2;
+      x1 = this.x + xvec;   y1 = this.y + yvec;
+      x2 = this.x - xvec;   y2 = this.y - yvec;
+    } else {
+      xvec /= 2.5; yvec /= 2.5;
+      x1 = this.x + xvec;   y1 = this.y + yvec;
+      x2 = this.x - xvec;   y2 = this.y - yvec;
+    }
+
+    // timeInCycle resets to 0 for both daughters
+    const d1 = new Agent({ x:x1, y:y1, area:daughterArea,
+      growthRate:this.growthRate, divisionArea:INIT_AREA*nr1,
+      normRand:nr1, id:this.id, timeInCycle:0 });
+    const d2 = new Agent({ x:x2, y:y2, area:daughterArea,
+      growthRate:this.growthRate, divisionArea:INIT_AREA*nr2,
+      normRand:nr2, id:newID, timeInCycle:0 });
+    return [d1, d2];
+  }
+}
+
+/* ============================================================
+   Simulation
+   ============================================================ */
+class Simulation {
+  constructor({ repulsion, maxAgents, splitType, seed, dtMechanics, rGrowth }) {
+    this.repulsion   = repulsion;
+    this.maxAgents   = maxAgents;
+    this.splitType   = splitType;
+    this.dtMechanics = dtMechanics;
+    this.rGrowth     = rGrowth;
+    this.rng       = mulberry32(seed);
+    this.normalRng = makeNormal(this.rng);
+    this.maxID     = [1];
+    this.time      = 0;
+    this.dtGrowth  = 1;
+    this.agents    = [new Agent({ id:0 })];
+    this.frames    = [];
+  }
+
+  _updatePositionAB(dt) {
+    const d1 = dt * 1.5;
+    const d2 = dt * -0.5;
+    for (const a of this.agents) {
+      a.x += a.velX * d1 + a.prevVelX * d2;
+      a.y += a.velY * d1 + a.prevVelY * d2;
+      a.prevVelX = a.velX;
+      a.prevVelY = a.velY;
+      a.velX = 0; a.velY = 0;
+    }
+  }
+
+  updateGamma() {
+    const PI_INV = 1.0 / Math.PI;
+    for (const a of this.agents) {
+      const ar = Math.sqrt(a.area / Math.PI);
+      let sumJ = 0.0;
+      for (const b of this.agents) {
+        if (a.id === b.id) continue;
+        const dx   = a.x - b.x;
+        const dy   = a.y - b.y;
+        const dist = Math.sqrt(dx*dx + dy*dy) || 1e-6;
+        const br   = Math.sqrt(b.area / Math.PI);
+        const Rsum = ar + br;
+        if (dist >= 1.05 * Rsum) continue;
+        // arc-length fraction hidden by neighbour b
+        const phiIJ = (dist*dist - br*br + ar*ar) / (2 * dist * ar);
+        const phi2  = phiIJ * phiIJ;
+        if (phi2 < 1.0) sumJ += Math.sqrt(1.0 - phi2);
+      }
+      a.gamma = 1.0 - PI_INV * sumJ;
+    }
+  }
+
+  step() {
+    /* --- Growth & division --- */
+    const ratio    = this.time / this.dtGrowth;
+    const growBool = this.time > 0 && Math.abs(ratio - Math.round(ratio)) < 1e-6;
+
+    if (growBool) {
+      const survivors = [];
+      for (const a of this.agents) {
+        a.grow(this.dtGrowth, this.rGrowth);
+        if (a.shouldDivide()) {
+          const [d1, d2] = a.divide(this.maxID, this.rng, this.normalRng, this.splitType);
+          survivors.push(d1, d2);
+        } else {
+          survivors.push(a);
+        }
+      }
+      this.agents = survivors;
+    }
+
+    /* --- Repulsion & movement --- */
+    const rep = this.repulsion;
+    for (const a of this.agents) {
+      const ar = Math.sqrt(a.area / Math.PI);
+      a.prevVelX = a.velX;
+      a.prevVelY = a.velY;
+      a.velX = 0; a.velY = 0;
+
+      for (const b of this.agents) {
+        if (a.id === b.id) continue;
+        const dx   = a.x - b.x;
+        const dy   = a.y - b.y;
+        const dist = Math.sqrt(dx*dx + dy*dy) || 1e-6;
+        const br   = Math.sqrt(b.area / Math.PI);
+        const R    = ar + br;
+        if (dist >= 1.25 * R) continue;
+        let tmp = 0;
+        if (dist < R) {
+          tmp = 1 - dist / R;
+          tmp = tmp * tmp * rep / dist;
+        }
+        a.velX += dx * tmp;
+        a.velY += dy * tmp;
+      }
+    }
+
+    this._updatePositionAB(this.dtMechanics);
+    this.time = +(this.time + this.dtMechanics).toFixed(10);
+    this.updateGamma();
+    return this.agents.length;
+  }
+
+  /* Run in chunks so the UI stays responsive */
+  precomputeAsync(onProgress, moduloFrame = 1) {
+    return new Promise(resolve => {
+      this.frames = [this.agents.map(a => a.clone())];
+      const CHUNK = 200;
+      const MAX_STEPS = 500000;
+      let step = 0;
+
+      const tick = () => {
+        for (let i = 0; i < CHUNK; i++) {
+          this.step();
+          step++;
+          if (step % moduloFrame === 0) {
+            this.frames.push(this.agents.map(a => a.clone()));
+          }
+          if (this.agents.length >= this.maxAgents || step >= MAX_STEPS) {
+            // always save final state
+            this.frames.push(this.agents.map(a => a.clone()));
+            onProgress(1, this.frames.length);
+            return resolve(this.frames);
+          }
+        }
+        onProgress(this.agents.length / this.maxAgents, this.frames.length);
+        setTimeout(tick, 0);
+      };
+      setTimeout(tick, 0);
+    });
+  }
+}
+
+/* ============================================================
+   Jet colormap  (t ∈ [0,1] → [r,g,b] each 0-255)
+   ============================================================ */
+function jetColor(t) {
+  t = Math.max(0, Math.min(1, t));
+  const r = Math.round(255 * Math.min(Math.max(1.5 - Math.abs(4*t - 3), 0), 1));
+  const g = Math.round(255 * Math.min(Math.max(1.5 - Math.abs(4*t - 2), 0), 1));
+  const b = Math.round(255 * Math.min(Math.max(1.5 - Math.abs(4*t - 1), 0), 1));
+  return `rgb(${r},${g},${b})`;
+}
+
+/* Distinct hue per cell ID — golden-ratio hashing keeps neighbours visually apart */
+function idColor(id) {
+  const hue = (id * 137.508) % 360;   // golden-angle spacing
+  return `hsl(${hue.toFixed(1)}, 70%, 55%)`;
+}
+
+/* ============================================================
+   Renderer
+   ============================================================ */
+const canvas  = document.getElementById('canvas');
+const ctx     = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+function drawColorbarH(label0, labelMid, labelMax, title) {
+  const cbX = 60, cbY = W - 22, cbW = W - 120, cbH = 12;
+  // gradient
+  const grad = ctx.createLinearGradient(cbX, 0, cbX + cbW, 0);
+  for (let i = 0; i <= 10; i++) grad.addColorStop(i/10, jetColor(i/10));
+  ctx.fillStyle = grad;
+  ctx.fillRect(cbX, cbY, cbW, cbH);
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 0.5;
+  ctx.strokeRect(cbX, cbY, cbW, cbH);
+  // 3 labels: 0, mid, max
+  ctx.font = '10px JetBrains Mono, monospace';
+  ctx.fillStyle = '#c8dae8';
+  const ticks = [
+    { x: cbX,            text: label0,   align: 'left'   },
+    { x: cbX + cbW/2,    text: labelMid, align: 'center' },
+    { x: cbX + cbW,      text: labelMax, align: 'right'  },
+  ];
+  for (const t of ticks) {
+    ctx.textAlign = t.align;
+    ctx.fillText(t.text, t.x, cbY - 3);
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.beginPath(); ctx.moveTo(t.x === cbX ? cbX : t.x === cbX+cbW ? cbX+cbW : cbX+cbW/2, cbY);
+    ctx.lineTo(t.x === cbX ? cbX : t.x === cbX+cbW ? cbX+cbW : cbX+cbW/2, cbY + cbH); ctx.stroke();
+  }
+  // title to the left
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#00d4ff';
+  ctx.fillText(title, cbX - 6, cbY + cbH - 1);
+  ctx.textAlign = 'left';
+}
+
+function drawFrame(agents, winSize, frameIdx, simTime, colorMode, idMax = 1) {
+  ctx.clearRect(0, 0, W, H);
+
+  // grid
+  ctx.strokeStyle = '#141e28';
+  ctx.lineWidth = .8;
+  const step = W / 10;
+  for (let i = 0; i <= 10; i++) {
+    const p = i * step;
+    ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, H); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(W, p); ctx.stroke();
+  }
+
+  // axes
+  const cx = W / 2, cy = H / 2;
+  ctx.strokeStyle = '#1e3040';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(W, cy); ctx.stroke();
+
+  const scale = (W / 2) / winSize;
+
+  // cells
+  for (const a of agents) {
+    const px = cx + a.x * scale;
+    const py = cy - a.y * scale;
+    const r  = Math.sqrt(a.area / Math.PI) * scale;
+
+    ctx.beginPath(); ctx.arc(px, py, r, 0, 2*Math.PI);
+    if (colorMode === 'gamma') {
+      ctx.fillStyle = jetColor(a.gamma);
+      ctx.fill();
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = 1;
+    } else if (colorMode === 'id') {
+      ctx.fillStyle = jetColor(a.id / idMax);
+      ctx.fill();
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = 1;
+    } else {
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = 1;
+    }
+    ctx.stroke();
+  }
+
+  if (colorMode === 'gamma') drawColorbarH('0', '0.50', '1', 'γ');
+  if (colorMode === 'id')    drawColorbarH('0', String(Math.round(idMax/2)), String(idMax), 'ID');
+
+  // HUD
+  ctx.fillStyle = 'rgba(8,12,16,0.7)';
+  ctx.fillRect(8, 8, 260, 54);
+  ctx.fillStyle = '#00d4ff';
+  ctx.font = '11px JetBrains Mono, monospace';
+  ctx.fillText(`frame: ${frameIdx}`, 18, 26);
+  ctx.fillText(`agents: ${agents.length}  |  t = ${simTime.toFixed(1)} min`, 18, 44);
+}
+
+/* ============================================================
+   Playback state
+   ============================================================ */
+let frames    = [];
+let curFrame  = 0;
+let playing   = false;
+let playTimer = null;
+let winSize   = 100;
+let dtMechanicsUI = 0.1;  // updated at Run time, used for simTime display
+let moduloFrameUI = 1;    // updated at Run time, used for simTime display
+let idMaxID   = 1;        // fixed upper bound for cell-ID colormap
+
+
+const slider   = document.getElementById('frame-slider');
+const btnPlay  = document.getElementById('btn-play');
+const btnBack  = document.getElementById('btn-back');
+const btnFwd   = document.getElementById('btn-fwd');
+const lblFrame = document.getElementById('lbl-frame');
+const lblAgents= document.getElementById('lbl-agents');
+const lblTime  = document.getElementById('lbl-time');
+
+function showFrame(idx) {
+  idx = Math.max(0, Math.min(idx, frames.length - 1));
+  curFrame = idx;
+  const f = frames[idx];
+  const simTime = idx * dtMechanicsUI * moduloFrameUI;
+  const colorMode = document.getElementById('inp-colormode').value;
+  drawFrame(f, winSize, idx, simTime, colorMode, idMaxID);
+  slider.value    = idx;
+  lblFrame.textContent  = idx;
+  lblAgents.textContent = f.length;
+  lblTime.textContent   = simTime.toFixed(1) + ' min';
+}
+
+function stopPlay() {
+  playing = false;
+  clearInterval(playTimer);
+  btnPlay.textContent = '▶ Play';
+}
+
+btnPlay.addEventListener('click', () => {
+  if (playing) { stopPlay(); return; }
+  if (curFrame >= frames.length - 1) curFrame = 0;
+  playing = true;
+  btnPlay.textContent = '■ Pause';
+  playTimer = setInterval(() => {
+    if (curFrame >= frames.length - 1) { stopPlay(); return; }
+    showFrame(curFrame + 1);
+  }, 30);
+});
+
+btnBack.addEventListener('click', () => { stopPlay(); showFrame(curFrame - 1); });
+btnFwd .addEventListener('click', () => { stopPlay(); showFrame(curFrame + 1); });
+slider .addEventListener('input', () => { stopPlay(); showFrame(+slider.value); });
+document.getElementById('inp-colormode').addEventListener('change', () => {
+  if (frames.length) showFrame(curFrame);
+});
+document.getElementById('inp-winsize').addEventListener('input', () => {
+  winSize = +document.getElementById('inp-winsize').value;
+  if (frames.length) showFrame(curFrame);
+});
+
+/* ============================================================
+   Run button
+   ============================================================ */
+const btnRun   = document.getElementById('btn-run');
+const progWrap = document.getElementById('progress-wrap');
+const progBar  = document.getElementById('prog-bar-inner');
+const progLbl  = document.getElementById('prog-label');
+
+btnRun.addEventListener('click', async () => {
+  stopPlay();
+  frames = [];
+
+  btnRun.disabled = true;
+  [btnPlay, btnBack, btnFwd, slider].forEach(e => e.disabled = true);
+  slider.max = 0; slider.value = 0;
+
+  const repulsion = +document.getElementById('inp-repulsion').value;
+  const maxCells  = +document.getElementById('inp-maxcells').value;
+  winSize         = +document.getElementById('inp-winsize').value;
+  const splitType = +document.getElementById('inp-split').value;
+  const seed      = +document.getElementById('inp-seed').value;
+  dtMechanicsUI   = +document.getElementById('inp-dtmech').value;
+  const rGrowth   = +document.getElementById('inp-rgrowth').value;
+  moduloFrameUI   = Math.max(1, Math.round(+document.getElementById('inp-modframe').value));
+  const moduloFrame = moduloFrameUI;
+
+  progWrap.classList.add('visible');
+  progBar.style.width = '0%';
+  progLbl.textContent = 'Simulating…';
+
+  const sim = new Simulation({ repulsion, maxAgents: maxCells, splitType, seed,
+                               dtMechanics: dtMechanicsUI, rGrowth });
+
+  frames = await sim.precomputeAsync((pct, nFrames) => {
+    progBar.style.width = (pct * 100).toFixed(1) + '%';
+    progLbl.textContent = `Computing… ${nFrames} frames`;
+  }, moduloFrame);
+
+  progWrap.classList.remove('visible');
+
+  // fix the ID colormap range to the highest ID ever born
+  const lastFrame = frames[frames.length - 1];
+  idMaxID = Math.max(...lastFrame.map(a => a.id), 1);
+
+  slider.max = frames.length - 1;
+  slider.value = 0;
+  [btnPlay, btnBack, btnFwd, slider].forEach(e => e.disabled = false);
+  btnRun.disabled = false;
+
+  showFrame(0);
+});
+
+/* Initial blank canvas */
+(function initCanvas() {
+  ctx.fillStyle = '#080c10';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#1e3040';
+  ctx.font = '14px JetBrains Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Configure parameters and click ▶ Run', W/2, H/2);
+  ctx.textAlign = 'left';
+})();
+</script>
+</body>
+</html>
